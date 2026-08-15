@@ -1,9 +1,11 @@
 from pathlib import Path
 import os
+from functools import wraps
 
-from flask import Flask, jsonify, render_template
+from flask import Flask, jsonify, render_template, request
 
 from application.alerts import AlertManager
+from application.auth import AuthenticationManager
 from application.config import load_config
 from application.history import HistoryQuery
 from application.monitor import PingMonitor
@@ -11,7 +13,34 @@ from application.notifications import NotificationConfig, NotificationManager
 from application.storage import MeasurementStore
 
 
+def require_token(f):
+    """Decorator to require valid JWT token for route access."""
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        token = request.headers.get("Authorization", "").replace("Bearer ", "")
+        if not token:
+            return jsonify({"error": "Missing authorization token"}), 401
+        
+        if not hasattr(decorated_function, '_auth_manager'):
+            return jsonify({"error": "Authentication not initialized"}), 500
+        
+        payload = decorated_function._auth_manager.verify_token(token)
+        if not payload:
+            return jsonify({"error": "Invalid or expired token"}), 401
+        
+        # Make user info available to the route
+        request.user = payload
+        return f(*args, **kwargs)
+    return decorated_function
+
+
+# Global auth manager reference
+auth_manager = None
+
+
 def create_app(config_path: str | Path = "monitor_config.json") -> Flask:
+    global auth_manager
+    
     config = load_config(config_path)
     port = int(os.getenv("LATENCY_MONITOR_PORT", config.dashboard_port))
     config.dashboard_port = port
@@ -21,6 +50,8 @@ def create_app(config_path: str | Path = "monitor_config.json") -> Flask:
     history = HistoryQuery(store)
     notification_config = NotificationConfig.load(config.notification_config_path)
     notification_manager = NotificationManager(notification_config)
+    auth_manager = AuthenticationManager()
+    require_token._auth_manager = auth_manager
 
     app = Flask(
         __name__,
@@ -32,7 +63,102 @@ def create_app(config_path: str | Path = "monitor_config.json") -> Flask:
     def index():
         return render_template("dashboard.html", targets=config.targets)
 
+    @app.route("/api/auth/login", methods=["POST"])
+    def api_auth_login():
+        """Authenticate a user and return a JWT token."""
+        data = request.get_json() or {}
+        username = data.get("username")
+        password = data.get("password")
+
+        if not username or not password:
+            return jsonify({"error": "Missing username or password"}), 400
+
+        token = auth_manager.authenticate(username, password)
+        if not token:
+            return jsonify({"error": "Invalid credentials"}), 401
+
+        return jsonify({
+            "token": token,
+            "message": "Login successful",
+        })
+
+    @app.route("/api/auth/verify", methods=["GET"])
+    @require_token
+    def api_auth_verify():
+        """Verify current authentication token."""
+        return jsonify({
+            "valid": True,
+            "user": request.user["username"],
+            "role": request.user["role"],
+        })
+
+    @app.route("/api/auth/change-password", methods=["POST"])
+    @require_token
+    def api_auth_change_password():
+        """Change the current user's password."""
+        data = request.get_json() or {}
+        old_password = data.get("old_password")
+        new_password = data.get("new_password")
+
+        if not old_password or not new_password:
+            return jsonify({"error": "Missing old or new password"}), 400
+
+        username = request.user["username"]
+        if auth_manager.change_password(username, old_password, new_password):
+            return jsonify({"message": "Password changed successfully"})
+        else:
+            return jsonify({"error": "Invalid old password"}), 401
+
+    @app.route("/api/auth/users", methods=["GET"])
+    @require_token
+    def api_auth_users():
+        """List all users (admin only)."""
+        if request.user["role"] != "admin":
+            return jsonify({"error": "Admin access required"}), 403
+
+        users = auth_manager.user_store.list_users()
+        return jsonify({
+            "users": [
+                {
+                    "username": u.username,
+                    "role": u.role,
+                    "created_at": u.created_at,
+                    "last_login": u.last_login,
+                }
+                for u in users
+            ]
+        })
+
+    @app.route("/api/auth/users", methods=["POST"])
+    @require_token
+    def api_auth_create_user():
+        """Create a new user (admin only)."""
+        if request.user["role"] != "admin":
+            return jsonify({"error": "Admin access required"}), 403
+
+        data = request.get_json() or {}
+        username = data.get("username")
+        password = data.get("password")
+        role = data.get("role", "user")
+
+        if not username or not password:
+            return jsonify({"error": "Missing username or password"}), 400
+
+        try:
+            user = auth_manager.create_user(username, password, admin_only=(role == "admin"))
+            return jsonify({
+                "message": f"User {username} created successfully",
+                "user": {
+                    "username": user.username,
+                    "role": user.role,
+                    "created_at": user.created_at,
+                },
+            }), 201
+        except ValueError as e:
+            return jsonify({"error": str(e)}), 409
+
     @app.route("/api/status")
+    @require_token
     def api_status():
         snapshot = monitor.run_once()
         alerts = []
@@ -70,6 +196,7 @@ def create_app(config_path: str | Path = "monitor_config.json") -> Flask:
         })
 
     @app.route("/api/history/<target>")
+    @require_token
     def api_history(target: str):
         return jsonify({
             "target": target,
@@ -78,6 +205,7 @@ def create_app(config_path: str | Path = "monitor_config.json") -> Flask:
         })
 
     @app.route("/api/incidents")
+    @require_token
     def api_incidents():
         rows = []
         for target in config.targets:
@@ -86,6 +214,7 @@ def create_app(config_path: str | Path = "monitor_config.json") -> Flask:
         return jsonify({"incidents": rows[:20]})
 
     @app.route("/api/graph/<target>")
+    @require_token
     def api_graph(target: str):
         """Fetch time-series data for a target for graphing."""
         if target not in config.targets:
@@ -101,6 +230,7 @@ def create_app(config_path: str | Path = "monitor_config.json") -> Flask:
         })
 
     @app.route("/api/notifications/config", methods=["GET"])
+    @require_token
     def api_notifications_config():
         """Get current notification configuration."""
         return jsonify({
@@ -119,6 +249,7 @@ def create_app(config_path: str | Path = "monitor_config.json") -> Flask:
         })
 
     @app.route("/api/notifications/test", methods=["POST"])
+    @require_token
     def api_notifications_test():
         """Send a test notification to verify configuration."""
         results = notification_manager.notify(
