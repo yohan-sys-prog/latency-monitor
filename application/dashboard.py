@@ -6,6 +6,7 @@ from flask import Flask, jsonify, render_template, request
 
 from application.alerts import AlertManager
 from application.auth import AuthenticationManager
+from application.api import api_response, rate_limit, validate_json
 from application.config import load_config
 from application.history import HistoryQuery
 from application.monitor import PingMonitor
@@ -17,14 +18,13 @@ def require_token(f):
     """Decorator to require valid JWT token for route access."""
     @wraps(f)
     def decorated_function(*args, **kwargs):
+        global auth_manager
+        
         token = request.headers.get("Authorization", "").replace("Bearer ", "")
         if not token:
             return jsonify({"error": "Missing authorization token"}), 401
         
-        if not hasattr(decorated_function, '_auth_manager'):
-            return jsonify({"error": "Authentication not initialized"}), 500
-        
-        payload = decorated_function._auth_manager.verify_token(token)
+        payload = auth_manager.verify_token(token)
         if not payload:
             return jsonify({"error": "Invalid or expired token"}), 401
         
@@ -32,10 +32,6 @@ def require_token(f):
         request.user = payload
         return f(*args, **kwargs)
     return decorated_function
-
-
-# Global auth manager reference
-auth_manager = None
 
 
 def create_app(config_path: str | Path = "monitor_config.json") -> Flask:
@@ -51,7 +47,6 @@ def create_app(config_path: str | Path = "monitor_config.json") -> Flask:
     notification_config = NotificationConfig.load(config.notification_config_path)
     notification_manager = NotificationManager(notification_config)
     auth_manager = AuthenticationManager()
-    require_token._auth_manager = auth_manager
 
     app = Flask(
         __name__,
@@ -59,25 +54,49 @@ def create_app(config_path: str | Path = "monitor_config.json") -> Flask:
         static_folder=str(Path(__file__).resolve().parent.parent / "static"),
     )
 
+    # Add CORS headers
+    @app.after_request
+    def add_cors_headers(response):
+        response.headers["Access-Control-Allow-Origin"] = "*"
+        response.headers["Access-Control-Allow-Methods"] = "GET, POST, PUT, DELETE, OPTIONS"
+        response.headers["Access-Control-Allow-Headers"] = "Content-Type, Authorization"
+        return response
+
+    # Error handlers for production-grade API
+    @app.errorhandler(404)
+    def not_found(error):
+        return jsonify({"status": "error", "error": "Endpoint not found"}), 404
+
+    @app.errorhandler(500)
+    def internal_error(error):
+        return jsonify({"status": "error", "error": "Internal server error"}), 500
+
+    @app.errorhandler(401)
+    def unauthorized(error):
+        return jsonify({"status": "error", "error": "Unauthorized"}), 401
+
+    @app.errorhandler(403)
+    def forbidden(error):
+        return jsonify({"status": "error", "error": "Forbidden"}), 403
+
     @app.route("/")
     def index():
         return render_template("dashboard.html", targets=config.targets)
 
     @app.route("/api/auth/login", methods=["POST"])
+    @rate_limit(max_requests=10, window_seconds=60)
+    @validate_json("username", "password")
     def api_auth_login():
         """Authenticate a user and return a JWT token."""
-        data = request.get_json() or {}
+        data = request.get_json()
         username = data.get("username")
         password = data.get("password")
 
-        if not username or not password:
-            return jsonify({"error": "Missing username or password"}), 400
-
         token = auth_manager.authenticate(username, password)
         if not token:
-            return jsonify({"error": "Invalid credentials"}), 401
+            return api_response(error="Invalid credentials", status=401)
 
-        return jsonify({
+        return api_response({
             "token": token,
             "message": "Login successful",
         })
@@ -258,6 +277,48 @@ def create_app(config_path: str | Path = "monitor_config.json") -> Flask:
             "warning",
         )
         return jsonify({"results": results})
+
+    # V1 API endpoints (production-grade versioning)
+    @app.route("/api/v1/status", methods=["GET"])
+    @require_token
+    @rate_limit(max_requests=60, window_seconds=60)
+    def api_v1_status():
+        """Get current system status (V1 API)."""
+        snapshot = monitor.run_once()
+        alerts = []
+        for target, metrics in snapshot.items():
+            alert = alert_manager.evaluate(
+                target,
+                metrics,
+                config.latency_threshold_ms,
+                config.packet_loss_threshold,
+                config.alert_cooldown_seconds,
+            )
+            if alert is not None:
+                alerts.append(alert)
+                notification_manager.notify(
+                    target,
+                    alert["message"],
+                    alert["severity"],
+                )
+
+        return api_response({
+            "targets": snapshot,
+            "alerts": alerts,
+            "config": {
+                "interval": config.interval,
+                "latency_threshold_ms": config.latency_threshold_ms,
+                "packet_loss_threshold": config.packet_loss_threshold,
+            },
+        })
+
+    @app.route("/api/v1/health", methods=["GET"])
+    def api_v1_health():
+        """Health check endpoint (no auth required)."""
+        return api_response({
+            "status": "healthy",
+            "version": "1.0.0",
+        })
 
     return app
 
