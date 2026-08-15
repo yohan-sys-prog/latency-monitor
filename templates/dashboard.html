@@ -1,0 +1,124 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Network Monitor</title>
+    <style>
+      :root {
+        --bg: #0f172a;
+        --panel: #111827;
+        --panel-2: #1f2937;
+        --text: #e5e7eb;
+        --muted: #94a3b8;
+        --accent: #38bdf8;
+        --good: #22c55e;
+        --warn: #f59e0b;
+        --bad: #ef4444;
+      }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        background: var(--bg);
+        color: var(--text);
+        font-family: Arial, sans-serif;
+      }
+      .header {
+        padding: 24px 32px 8px;
+        border-bottom: 1px solid rgba(148, 163, 184, 0.2);
+      }
+      .header h1 {
+        margin: 0;
+        font-size: 2rem;
+      }
+      .grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+        gap: 16px;
+        padding: 24px 32px;
+      }
+      .card {
+        background: var(--panel);
+        border: 1px solid rgba(148, 163, 184, 0.15);
+        border-radius: 12px;
+        padding: 18px;
+      }
+      .target {
+        font-size: 1.3rem;
+        font-weight: 700;
+        margin-bottom: 12px;
+      }
+      .metric-row {
+        display: flex;
+        justify-content: space-between;
+        margin: 8px 0;
+        color: var(--muted);
+      }
+      .metric-row strong {
+        color: var(--text);
+      }
+      .status {
+        margin-top: 12px;
+        font-weight: 700;
+      }
+      .good { color: var(--good); }
+      .warn { color: var(--warn); }
+      .bad { color: var(--bad); }
+      .empty {
+        color: var(--muted);
+        font-style: italic;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="header">
+      <h1>NETWORK MONITOR</h1>
+    </div>
+    <div class="grid" id="cards"></div>
+
+    <script>
+      const cardsEl = document.getElementById('cards');
+
+      function statusClass(value) {
+        if (value === null || value === undefined) return 'bad';
+        if (value > 200) return 'warn';
+        return 'good';
+      }
+
+      function renderTargets(data) {
+        cardsEl.innerHTML = '';
+        const targets = data.targets || {};
+        Object.entries(targets).forEach(([target, metrics]) => {
+          const card = document.createElement('div');
+          card.className = 'card';
+          const current = metrics.current ?? 'FAIL';
+          const avg = metrics.avg ?? 'N/A';
+          const min = metrics.min ?? 'N/A';
+          const max = metrics.max ?? 'N/A';
+          const failed = metrics.failed ?? 0;
+          const status = metrics.current === null ? 'DOWN' : 'UP';
+
+          card.innerHTML = `
+            <div class="target">${target}</div>
+            <div class="metric-row"><span>Current</span><strong>${current === 'FAIL' ? 'FAIL' : current + ' ms'}</strong></div>
+            <div class="metric-row"><span>Avg</span><strong>${avg === 'N/A' ? 'N/A' : avg.toFixed(2) + ' ms'}</strong></div>
+            <div class="metric-row"><span>Min</span><strong>${min === 'N/A' ? 'N/A' : min.toFixed(2) + ' ms'}</strong></div>
+            <div class="metric-row"><span>Max</span><strong>${max === 'N/A' ? 'N/A' : max.toFixed(2) + ' ms'}</strong></div>
+            <div class="metric-row"><span>Failures</span><strong>${failed}</strong></div>
+            <div class="status ${status === 'DOWN' ? 'bad' : 'good'}">${status}</div>
+          `;
+          cardsEl.appendChild(card);
+        });
+      }
+
+      async function refresh() {
+        const response = await fetch('/api/status');
+        const data = await response.json();
+        renderTargets(data);
+      }
+
+      refresh();
+      setInterval(refresh, 2000);
+    </script>
+  </body>
+</html>

@@ -1,0 +1,14 @@
+services:
+  latency-monitor:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: latency-monitor
+    environment:
+      LATENCY_MONITOR_PORT: "8000"
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./data:/app/data
+      - ./monitor_config.json:/app/monitor_config.json:ro
+    restart: unless-stopped
