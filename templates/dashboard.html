@@ -203,6 +203,11 @@
         return 'good';
       }
 
+      function formatPercent(value) {
+        if (value === null || value === undefined || Number.isNaN(value)) return 'N/A';
+        return `${value.toFixed(1)}%`;
+      }
+
       function renderSummary(data) {
         const targets = data.targets || {};
         const values = Object.values(targets).map(t => t.current).filter(v => v !== null && v !== undefined);
@@ -250,6 +255,7 @@
           const min = metrics.min ?? null;
           const max = metrics.max ?? null;
           const failed = metrics.failed ?? 0;
+          const packetLoss = metrics.packet_loss_percent ?? 0;
           const status = current === null ? 'DOWN' : 'UP';
           const tone = current === null ? 'bad' : statusTone(current);
 
@@ -263,6 +269,7 @@
             <div class="metric-row"><span>Min</span><strong>${formatMs(min)}</strong></div>
             <div class="metric-row"><span>Max</span><strong>${formatMs(max)}</strong></div>
             <div class="metric-row"><span>Failures</span><strong>${failed}</strong></div>
+            <div class="metric-row"><span>Packet loss</span><strong>${formatPercent(packetLoss)}</strong></div>
             <div class="status ${tone}">${status}</div>
           `;
           cardsEl.appendChild(card);

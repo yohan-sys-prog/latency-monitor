@@ -2,6 +2,7 @@ import sqlite3
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 from application.alerts import AlertManager
 from application.config import MonitorConfig
@@ -36,6 +37,15 @@ class PingMonitorTests(unittest.TestCase):
             self.assertIsNotNone(alert)
             self.assertEqual(alert["target"], "8.8.8.8")
             self.assertIn("High latency", alert["message"])
+
+    def test_packet_loss_percent_tracks_failures(self):
+        monitor = PingMonitor(targets=["8.8.8.8"])
+        with patch.object(PingMonitor, "_ping_once", side_effect=[None, 42.5]):
+            first = monitor.run_once()
+            second = monitor.run_once()
+
+        self.assertEqual(first["8.8.8.8"]["packet_loss_percent"], 100.0)
+        self.assertEqual(second["8.8.8.8"]["packet_loss_percent"], 50.0)
 
     def test_config_defaults_are_loaded(self):
         config = MonitorConfig()

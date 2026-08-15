@@ -12,6 +12,12 @@ class PingMonitor:
         self.failures = {target: 0 for target in self.targets}
         self.current = {target: None for target in self.targets}
 
+    def _packet_loss_percent(self, target: str) -> float:
+        attempts = len(self.history[target]) + self.failures[target]
+        if attempts == 0:
+            return 0.0
+        return (self.failures[target] / attempts) * 100.0
+
     def _ping_once(self, target: str) -> float | None:
         try:
             completed = subprocess.run(
@@ -75,5 +81,8 @@ class PingMonitor:
                 "avg": statistics.fmean(history),
                 "failed": self.failures[target],
             }
+
+        for target, stats in results.items():
+            stats["packet_loss_percent"] = self._packet_loss_percent(target)
 
         return results

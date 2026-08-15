@@ -35,10 +35,11 @@ def main() -> int:
                 minimum = stats["min"]
                 maximum = stats["max"]
                 failed = stats["failed"]
+                packet_loss = stats.get("packet_loss_percent", 0.0)
                 if current is None:
-                    print(f"{target}: FAIL | Min={minimum} | Max={maximum} | Avg={avg} | Failed={failed}")
+                    print(f"{target}: FAIL | Min={minimum} | Max={maximum} | Avg={avg} | Failed={failed} | Packet loss={packet_loss:.1f}%")
                 else:
-                    print(f"{target}: {current:.2f} ms | Avg={avg:.2f} ms | Min={minimum:.2f} ms | Max={maximum:.2f} ms | Failed={failed}")
+                    print(f"{target}: {current:.2f} ms | Avg={avg:.2f} ms | Min={minimum:.2f} ms | Max={maximum:.2f} ms | Failed={failed} | Packet loss={packet_loss:.1f}%")
             if args.iterations != 0 and attempt >= args.iterations:
                 break
             import time
