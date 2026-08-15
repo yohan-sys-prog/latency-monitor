@@ -4,6 +4,7 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Network Monitor</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.js"></script>
     <style>
       :root {
         --bg: #07111f;
@@ -26,7 +27,7 @@
         font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
       }
       .shell {
-        max-width: 1180px;
+        max-width: 1400px;
         margin: 0 auto;
         padding: 24px 20px 40px;
       }
@@ -165,6 +166,50 @@
         color: var(--muted);
         font-style: italic;
       }
+      .graph-container {
+        background: var(--panel);
+        border: 1px solid var(--border);
+        border-radius: 14px;
+        box-shadow: 0 10px 30px rgba(15, 23, 42, 0.24);
+        margin-top: 24px;
+        padding: 18px 20px;
+      }
+      .graph-container h2 {
+        margin: 0 0 16px;
+        font-size: 1.1rem;
+      }
+      .graph-wrapper {
+        position: relative;
+        height: 300px;
+        margin-bottom: 12px;
+      }
+      .recovery-badge {
+        display: inline-block;
+        margin-top: 12px;
+        padding: 6px 10px;
+        border-radius: 6px;
+        background: rgba(34, 197, 94, 0.12);
+        color: var(--good);
+        font-size: 0.85rem;
+        border-left: 3px solid var(--good);
+      }
+      .incident-badge {
+        display: inline-block;
+        margin-left: 6px;
+        padding: 2px 6px;
+        border-radius: 3px;
+        font-size: 0.75rem;
+        font-weight: 700;
+        text-transform: uppercase;
+      }
+      .incident-badge.warning {
+        background: rgba(245, 158, 11, 0.2);
+        color: var(--warn);
+      }
+      .incident-badge.critical {
+        background: rgba(239, 68, 68, 0.2);
+        color: var(--bad);
+      }
     </style>
   </head>
   <body>
@@ -180,6 +225,8 @@
       <div class="summary" id="summary"></div>
       <div class="grid" id="cards"></div>
 
+      <div id="graphs"></div>
+
       <div class="incident-list">
         <h2>Recent incidents</h2>
         <div id="incidents"></div>
@@ -191,10 +238,18 @@
       const summaryEl = document.getElementById('summary');
       const incidentsEl = document.getElementById('incidents');
       const updatedEl = document.getElementById('last-updated');
+      const graphsEl = document.getElementById('graphs');
+
+      const chartInstances = {};
 
       function formatMs(value) {
         if (value === null || value === undefined || Number.isNaN(value)) return 'N/A';
         return `${value.toFixed(2)} ms`;
+      }
+
+      function formatPercent(value) {
+        if (value === null || value === undefined || Number.isNaN(value)) return 'N/A';
+        return `${value.toFixed(1)}%`;
       }
 
       function statusTone(value) {
@@ -203,9 +258,16 @@
         return 'good';
       }
 
-      function formatPercent(value) {
-        if (value === null || value === undefined || Number.isNaN(value)) return 'N/A';
-        return `${value.toFixed(1)}%`;
+      function formatTime(isoString) {
+        try {
+          const date = new Date(isoString);
+          const hours = String(date.getHours()).padStart(2, '0');
+          const mins = String(date.getMinutes()).padStart(2, '0');
+          const secs = String(date.getSeconds()).padStart(2, '0');
+          return `${hours}:${mins}:${secs}`;
+        } catch {
+          return 'N/A';
+        }
       }
 
       function renderSummary(data) {
@@ -237,9 +299,11 @@
           return;
         }
 
-        incidentsEl.innerHTML = incidents.slice(0, 5).map(item => `
+        incidentsEl.innerHTML = incidents.slice(0, 8).map(item => `
           <div class="incident-item">
-            <strong>${item.target}</strong> — ${item.message} — <span>${item.severity}</span>
+            <strong>${item.target}</strong> — ${item.message}
+            <span class="incident-badge ${item.severity}">${item.severity}</span>
+            <br><span style="color: #64748b; font-size: 0.8rem;">${formatTime(item.created_at)}</span>
           </div>
         `).join('');
       }
@@ -276,17 +340,121 @@
         });
       }
 
+      async function renderGraphs(targets) {
+        graphsEl.innerHTML = '';
+        for (const target of targets) {
+          const response = await fetch(`/api/graph/${target}`);
+          const data = await response.json();
+          renderGraph(target, data);
+        }
+      }
+
+      function renderGraph(target, data) {
+        const container = document.createElement('div');
+        container.className = 'graph-container';
+        
+        const title = document.createElement('h2');
+        title.textContent = `${target} — Last 24 hours`;
+        container.appendChild(title);
+
+        const wrapper = document.createElement('div');
+        wrapper.className = 'graph-wrapper';
+        const canvas = document.createElement('canvas');
+        wrapper.appendChild(canvas);
+        container.appendChild(wrapper);
+
+        if (data.recovery && data.recovery.recovered_at) {
+          const recoveryBadge = document.createElement('div');
+          recoveryBadge.className = 'recovery-badge';
+          recoveryBadge.innerHTML = `✓ Recovered at ${formatTime(data.recovery.recovered_at)}`;
+          container.appendChild(recoveryBadge);
+        }
+
+        graphsEl.appendChild(container);
+
+        const series = data.series || [];
+        const labels = series.map(s => formatTime(s.created_at));
+        const latencies = series.map(s => s.success ? s.value : null);
+
+        if (chartInstances[target]) {
+          chartInstances[target].destroy();
+        }
+
+        chartInstances[target] = new Chart(canvas, {
+          type: 'line',
+          data: {
+            labels: labels,
+            datasets: [
+              {
+                label: 'Latency (ms)',
+                data: latencies,
+                borderColor: '#38bdf8',
+                backgroundColor: 'rgba(56, 189, 248, 0.08)',
+                borderWidth: 2,
+                fill: true,
+                pointRadius: 3,
+                pointBackgroundColor: '#38bdf8',
+                pointBorderColor: '#0f172a',
+                pointBorderWidth: 1,
+                spanGaps: false,
+                tension: 0.3,
+              },
+            ],
+          },
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+              legend: {
+                display: true,
+                labels: {
+                  color: '#e2e8f0',
+                  font: { size: 12 },
+                },
+              },
+            },
+            scales: {
+              y: {
+                beginAtZero: true,
+                grid: {
+                  color: 'rgba(148, 163, 184, 0.1)',
+                },
+                ticks: {
+                  color: '#94a3b8',
+                  font: { size: 11 },
+                },
+              },
+              x: {
+                grid: {
+                  display: false,
+                },
+                ticks: {
+                  color: '#94a3b8',
+                  font: { size: 10 },
+                  maxRotation: 45,
+                  minRotation: 0,
+                },
+              },
+            },
+          },
+        });
+      }
+
       async function refresh() {
         const response = await fetch('/api/status');
         const data = await response.json();
         renderSummary(data);
         renderTargets(data);
         renderIncidents(data);
+        const targets = Object.keys(data.targets || {});
+        if (targets.length > 0) {
+          await renderGraphs(targets);
+        }
         updatedEl.textContent = `Last update: ${new Date().toLocaleTimeString()}`;
       }
 
       refresh();
-      setInterval(refresh, 2000);
+      setInterval(refresh, 3000);
     </script>
   </body>
 </html>

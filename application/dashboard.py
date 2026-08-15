@@ -76,6 +76,21 @@ def create_app(config_path: str | Path = "monitor_config.json") -> Flask:
         rows.sort(key=lambda item: item.get("created_at", ""), reverse=True)
         return jsonify({"incidents": rows[:20]})
 
+    @app.route("/api/graph/<target>")
+    def api_graph(target: str):
+        """Fetch time-series data for a target for graphing."""
+        if target not in config.targets:
+            return jsonify({"error": "target not found"}), 404
+        
+        series = history.time_series_for_target(target, hours=24, limit=100)
+        recovery = history.latest_recovery(target)
+        
+        return jsonify({
+            "target": target,
+            "series": series,
+            "recovery": recovery,
+        })
+
     return app
 
 

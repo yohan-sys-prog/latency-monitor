@@ -6,6 +6,7 @@ from unittest.mock import patch
 
 from application.alerts import AlertManager
 from application.config import MonitorConfig
+from application.history import HistoryQuery
 from application.monitor import PingMonitor
 from application.storage import MeasurementStore
 
@@ -46,6 +47,25 @@ class PingMonitorTests(unittest.TestCase):
 
         self.assertEqual(first["8.8.8.8"]["packet_loss_percent"], 100.0)
         self.assertEqual(second["8.8.8.8"]["packet_loss_percent"], 50.0)
+
+    def test_recovery_detection_logic(self):
+        """Test that recovery is detected after an outage."""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            db_path = Path(temp_dir) / "latency.db"
+            store = MeasurementStore(db_path)
+            history = HistoryQuery(store)
+            
+            # Record a failure incident
+            store.record_incident("8.8.8.8", "Connection lost", severity="critical")
+            
+            # Record a successful measurement after the incident
+            import time
+            time.sleep(0.01)
+            store.record_measurement("8.8.8.8", 42.5, success=True)
+            
+            recovery = history.latest_recovery("8.8.8.8")
+            self.assertIsNotNone(recovery)
+            self.assertIsNotNone(recovery["recovered_at"])
 
     def test_config_defaults_are_loaded(self):
         config = MonitorConfig()
