@@ -1,14 +1,67 @@
+version: '3.8'
+
 services:
   latency-monitor:
     build:
       context: .
       dockerfile: Dockerfile
     container_name: latency-monitor
+    image: latency-monitor:latest
+    restart: unless-stopped
+    
+    # Port mapping
+    ports:
+      - "127.0.0.1:8000:8000"
+    
+    # Environment variables
     environment:
       LATENCY_MONITOR_PORT: "8000"
-    ports:
-      - "8000:8000"
+      LATENCY_MONITOR_HOST: "0.0.0.0"
+      PYTHONUNBUFFERED: "1"
+      # Add your notification config here:
+      # NOTIFICATION_EMAIL_ENABLED: "false"
+      # NOTIFICATION_WEBHOOK_ENABLED: "false"
+    
+    # Volumes for persistent data
     volumes:
-      - ./data:/app/data
+      - latency-data:/app/data
       - ./monitor_config.json:/app/monitor_config.json:ro
-    restart: unless-stopped
+      - ./notification_config.json:/app/notification_config.json:ro
+    
+    # Resource limits
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 512M
+        reservations:
+          cpus: '0.5'
+          memory: 256M
+    
+    # Logging configuration
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+        labels: "app=latency-monitor"
+    
+    # Health check
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/v1/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    
+    # Network
+    networks:
+      - monitoring
+
+volumes:
+  latency-data:
+    driver: local
+
+networks:
+  monitoring:
+    driver: bridge
