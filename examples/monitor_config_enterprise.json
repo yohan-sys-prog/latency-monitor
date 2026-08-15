@@ -1,0 +1,18 @@
+{
+  "targets": [
+    "8.8.8.8",
+    "1.1.1.1",
+    "208.67.222.222",
+    "9.9.9.9",
+    "example.com",
+    "api.github.com"
+  ],
+  "interval": 1.0,
+  "latency_threshold_ms": 150,
+  "packet_loss_threshold": 5,
+  "alert_cooldown_seconds": 600,
+  "dashboard_port": 8000,
+  "dashboard_host": "0.0.0.0",
+  "database_path": "data/latency.db",
+  "notification_config_path": "notification_config.json"
+}
