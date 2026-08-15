@@ -17,6 +17,7 @@ class MonitorConfig:
     db_path: str = "data/latency.db"
     dashboard_host: str = "0.0.0.0"
     dashboard_port: int = 8000
+    notification_config_path: str = "notification_config.json"
 
     def to_dict(self) -> dict:
         return {
@@ -30,6 +31,7 @@ class MonitorConfig:
             "db_path": self.db_path,
             "dashboard_host": self.dashboard_host,
             "dashboard_port": self.dashboard_port,
+            "notification_config_path": self.notification_config_path,
         }
 
     def save(self, path: str | Path) -> None:
@@ -57,8 +59,10 @@ class MonitorConfig:
             db_path=data.get("db_path", "data/latency.db"),
             dashboard_host=data.get("dashboard_host", "0.0.0.0"),
             dashboard_port=int(data.get("dashboard_port", 8000)),
+            notification_config_path=data.get("notification_config_path", "notification_config.json"),
         )
 
 
 def load_config(path: str | Path = "monitor_config.json") -> MonitorConfig:
     return MonitorConfig.load(path)
+

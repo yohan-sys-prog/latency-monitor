@@ -7,6 +7,7 @@ from application.alerts import AlertManager
 from application.config import load_config
 from application.history import HistoryQuery
 from application.monitor import PingMonitor
+from application.notifications import NotificationConfig, NotificationManager
 from application.storage import MeasurementStore
 
 
@@ -18,6 +19,8 @@ def create_app(config_path: str | Path = "monitor_config.json") -> Flask:
     monitor = PingMonitor(config.targets, interval=config.interval, store=store)
     alert_manager = AlertManager(store)
     history = HistoryQuery(store)
+    notification_config = NotificationConfig.load(config.notification_config_path)
+    notification_manager = NotificationManager(notification_config)
 
     app = Flask(
         __name__,
@@ -43,6 +46,12 @@ def create_app(config_path: str | Path = "monitor_config.json") -> Flask:
             )
             if alert is not None:
                 alerts.append(alert)
+                # Send notifications for this alert
+                notification_manager.notify(
+                    target,
+                    alert["message"],
+                    alert["severity"],
+                )
 
         incident_rows = []
         for target in config.targets:
@@ -90,6 +99,34 @@ def create_app(config_path: str | Path = "monitor_config.json") -> Flask:
             "series": series,
             "recovery": recovery,
         })
+
+    @app.route("/api/notifications/config", methods=["GET"])
+    def api_notifications_config():
+        """Get current notification configuration."""
+        return jsonify({
+            "email": {
+                "enabled": notification_config.email.enabled,
+                "smtp_host": notification_config.email.smtp_host,
+                "smtp_port": notification_config.email.smtp_port,
+                "sender_email": notification_config.email.sender_email,
+                "recipient_emails": notification_config.email.recipient_emails,
+            },
+            "webhook": {
+                "enabled": notification_config.webhook.enabled,
+                "url": notification_config.webhook.url,
+                "platform": notification_config.webhook.platform,
+            },
+        })
+
+    @app.route("/api/notifications/test", methods=["POST"])
+    def api_notifications_test():
+        """Send a test notification to verify configuration."""
+        results = notification_manager.notify(
+            "test-target",
+            "This is a test notification from the Latency Monitor.",
+            "warning",
+        )
+        return jsonify({"results": results})
 
     return app
 
