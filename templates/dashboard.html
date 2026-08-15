@@ -6,64 +6,161 @@
     <title>Network Monitor</title>
     <style>
       :root {
-        --bg: #0f172a;
-        --panel: #111827;
-        --panel-2: #1f2937;
-        --text: #e5e7eb;
+        --bg: #07111f;
+        --panel: rgba(15, 23, 42, 0.88);
+        --panel-strong: #111827;
+        --border: rgba(148, 163, 184, 0.18);
+        --text: #e2e8f0;
         --muted: #94a3b8;
         --accent: #38bdf8;
         --good: #22c55e;
         --warn: #f59e0b;
         --bad: #ef4444;
+        --shadow: rgba(56, 189, 248, 0.25);
       }
       * { box-sizing: border-box; }
       body {
         margin: 0;
-        background: var(--bg);
+        background: radial-gradient(circle at top, #0f172a 0%, var(--bg) 50%, #020617 100%);
         color: var(--text);
-        font-family: Arial, sans-serif;
+        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
       }
-      .header {
-        padding: 24px 32px 8px;
-        border-bottom: 1px solid rgba(148, 163, 184, 0.2);
+      .shell {
+        max-width: 1180px;
+        margin: 0 auto;
+        padding: 24px 20px 40px;
       }
-      .header h1 {
+      .topbar {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 16px;
+        padding-bottom: 20px;
+        border-bottom: 1px solid var(--border);
+      }
+      .brand {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+      }
+      .logo {
+        width: 14px;
+        height: 14px;
+        border-radius: 50%;
+        background: linear-gradient(135deg, var(--good), var(--accent));
+        box-shadow: 0 0 18px var(--shadow);
+      }
+      .brand h1 {
         margin: 0;
-        font-size: 2rem;
+        font-size: clamp(1.5rem, 2vw, 2.2rem);
+        letter-spacing: 0.12em;
+      }
+      .status-pill {
+        border-radius: 999px;
+        border: 1px solid var(--border);
+        padding: 8px 12px;
+        font-size: 0.8rem;
+        color: var(--muted);
+        background: rgba(15, 23, 42, 0.7);
+      }
+      .summary {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+        gap: 16px;
+        margin-top: 24px;
+      }
+      .summary-card,
+      .card,
+      .incident-list {
+        background: var(--panel);
+        border: 1px solid var(--border);
+        border-radius: 14px;
+        box-shadow: 0 10px 30px rgba(15, 23, 42, 0.24);
+      }
+      .summary-card {
+        padding: 18px 20px;
+      }
+      .summary-label {
+        color: var(--muted);
+        font-size: 0.8rem;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+      }
+      .summary-value {
+        margin-top: 8px;
+        font-size: 1.9rem;
+        font-weight: 700;
       }
       .grid {
         display: grid;
         grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
-        gap: 16px;
-        padding: 24px 32px;
+        gap: 18px;
+        margin-top: 24px;
       }
       .card {
-        background: var(--panel);
-        border: 1px solid rgba(148, 163, 184, 0.15);
-        border-radius: 12px;
-        padding: 18px;
+        padding: 18px 18px 16px;
       }
       .target {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        margin-bottom: 14px;
+      }
+      .target-name {
         font-size: 1.3rem;
         font-weight: 700;
-        margin-bottom: 12px;
       }
+      .dot {
+        width: 12px;
+        height: 12px;
+        border-radius: 50%;
+        display: inline-block;
+      }
+      .dot.good { background: var(--good); }
+      .dot.warn { background: var(--warn); }
+      .dot.bad { background: var(--bad); }
       .metric-row {
         display: flex;
         justify-content: space-between;
-        margin: 8px 0;
+        margin: 10px 0;
         color: var(--muted);
+        font-size: 0.96rem;
       }
       .metric-row strong {
         color: var(--text);
       }
       .status {
-        margin-top: 12px;
+        margin-top: 14px;
+        display: inline-block;
+        border-radius: 999px;
+        padding: 6px 10px;
         font-weight: 700;
+        font-size: 0.76rem;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
       }
-      .good { color: var(--good); }
-      .warn { color: var(--warn); }
-      .bad { color: var(--bad); }
+      .status.good { background: rgba(34, 197, 94, 0.12); color: var(--good); }
+      .status.warn { background: rgba(245, 158, 11, 0.12); color: var(--warn); }
+      .status.bad { background: rgba(239, 68, 68, 0.12); color: var(--bad); }
+      .incident-list {
+        margin-top: 24px;
+        padding: 18px 20px;
+      }
+      .incident-list h2 {
+        margin: 0 0 12px;
+        font-size: 1.1rem;
+      }
+      .incident-item {
+        padding: 10px 0;
+        border-top: 1px solid var(--border);
+        color: var(--muted);
+      }
+      .incident-item:first-child {
+        border-top: none;
+      }
+      .incident-item strong {
+        color: var(--text);
+      }
       .empty {
         color: var(--muted);
         font-style: italic;
@@ -71,18 +168,75 @@
     </style>
   </head>
   <body>
-    <div class="header">
-      <h1>NETWORK MONITOR</h1>
+    <div class="shell">
+      <div class="topbar">
+        <div class="brand">
+          <span class="logo"></span>
+          <h1>NETWORK MONITOR</h1>
+        </div>
+        <div class="status-pill" id="last-updated">Loading…</div>
+      </div>
+
+      <div class="summary" id="summary"></div>
+      <div class="grid" id="cards"></div>
+
+      <div class="incident-list">
+        <h2>Recent incidents</h2>
+        <div id="incidents"></div>
+      </div>
     </div>
-    <div class="grid" id="cards"></div>
 
     <script>
       const cardsEl = document.getElementById('cards');
+      const summaryEl = document.getElementById('summary');
+      const incidentsEl = document.getElementById('incidents');
+      const updatedEl = document.getElementById('last-updated');
 
-      function statusClass(value) {
+      function formatMs(value) {
+        if (value === null || value === undefined || Number.isNaN(value)) return 'N/A';
+        return `${value.toFixed(2)} ms`;
+      }
+
+      function statusTone(value) {
         if (value === null || value === undefined) return 'bad';
         if (value > 200) return 'warn';
         return 'good';
+      }
+
+      function renderSummary(data) {
+        const targets = data.targets || {};
+        const values = Object.values(targets).map(t => t.current).filter(v => v !== null && v !== undefined);
+        const avg = values.length ? values.reduce((a, b) => a + b, 0) / values.length : 0;
+        const down = Object.values(targets).filter(t => t.current === null).length;
+
+        summaryEl.innerHTML = `
+          <div class="summary-card">
+            <div class="summary-label">Global avg</div>
+            <div class="summary-value">${avg ? `${avg.toFixed(2)} ms` : 'N/A'}</div>
+          </div>
+          <div class="summary-card">
+            <div class="summary-label">Targets online</div>
+            <div class="summary-value">${Object.keys(targets).length - down}/${Object.keys(targets).length}</div>
+          </div>
+          <div class="summary-card">
+            <div class="summary-label">Active alerts</div>
+            <div class="summary-value">${(data.alerts || []).length}</div>
+          </div>
+        `;
+      }
+
+      function renderIncidents(data) {
+        const incidents = data.incidents || [];
+        if (!incidents.length) {
+          incidentsEl.innerHTML = '<div class="empty">No incidents recorded.</div>';
+          return;
+        }
+
+        incidentsEl.innerHTML = incidents.slice(0, 5).map(item => `
+          <div class="incident-item">
+            <strong>${item.target}</strong> — ${item.message} — <span>${item.severity}</span>
+          </div>
+        `).join('');
       }
 
       function renderTargets(data) {
@@ -91,21 +245,25 @@
         Object.entries(targets).forEach(([target, metrics]) => {
           const card = document.createElement('div');
           card.className = 'card';
-          const current = metrics.current ?? 'FAIL';
-          const avg = metrics.avg ?? 'N/A';
-          const min = metrics.min ?? 'N/A';
-          const max = metrics.max ?? 'N/A';
+          const current = metrics.current ?? null;
+          const avg = metrics.avg ?? null;
+          const min = metrics.min ?? null;
+          const max = metrics.max ?? null;
           const failed = metrics.failed ?? 0;
-          const status = metrics.current === null ? 'DOWN' : 'UP';
+          const status = current === null ? 'DOWN' : 'UP';
+          const tone = current === null ? 'bad' : statusTone(current);
 
           card.innerHTML = `
-            <div class="target">${target}</div>
-            <div class="metric-row"><span>Current</span><strong>${current === 'FAIL' ? 'FAIL' : current + ' ms'}</strong></div>
-            <div class="metric-row"><span>Avg</span><strong>${avg === 'N/A' ? 'N/A' : avg.toFixed(2) + ' ms'}</strong></div>
-            <div class="metric-row"><span>Min</span><strong>${min === 'N/A' ? 'N/A' : min.toFixed(2) + ' ms'}</strong></div>
-            <div class="metric-row"><span>Max</span><strong>${max === 'N/A' ? 'N/A' : max.toFixed(2) + ' ms'}</strong></div>
+            <div class="target">
+              <div class="target-name">${target}</div>
+              <span class="dot ${tone}"></span>
+            </div>
+            <div class="metric-row"><span>Current</span><strong>${formatMs(current)}</strong></div>
+            <div class="metric-row"><span>Avg</span><strong>${formatMs(avg)}</strong></div>
+            <div class="metric-row"><span>Min</span><strong>${formatMs(min)}</strong></div>
+            <div class="metric-row"><span>Max</span><strong>${formatMs(max)}</strong></div>
             <div class="metric-row"><span>Failures</span><strong>${failed}</strong></div>
-            <div class="status ${status === 'DOWN' ? 'bad' : 'good'}">${status}</div>
+            <div class="status ${tone}">${status}</div>
           `;
           cardsEl.appendChild(card);
         });
@@ -114,7 +272,10 @@
       async function refresh() {
         const response = await fetch('/api/status');
         const data = await response.json();
+        renderSummary(data);
         renderTargets(data);
+        renderIncidents(data);
+        updatedEl.textContent = `Last update: ${new Date().toLocaleTimeString()}`;
       }
 
       refresh();

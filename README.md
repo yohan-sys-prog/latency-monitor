@@ -1,32 +1,56 @@
 # latency-monitor
 
-A lightweight multi-target latency and network monitor for macOS/Linux.
+A lightweight multi-target network monitoring app that tracks ping latency, failure counts, alerts, and basic historical trends.
 
 ## Features
 
 - multi-target ping monitoring
-- min, max, and average latency tracking
+- current, min, max, and average latency tracking
 - failed ping counting
-- SQLite-backed persistence for history and incidents
-- optional Flask dashboard
-- command-line monitoring mode
+- SQLite-backed persistence for measurements and incidents
+- live Flask dashboard
+- CLI monitoring mode
+- configurable thresholds and targets
 
 ## Quick start
 
-```bash
-python3 -m application.cli --targets 8.8.8.8 1.1.1.1 --interval 1.0 --iterations 5
-```
+Run the dashboard locally:
 
 ```bash
+cd /Users/yohan/projects/latency-monitor
 python3 -m application.dashboard
 ```
 
-Then open: http://localhost:8000
+Then open:
+
+```text
+http://localhost:8000
+```
+
+Run the CLI monitor:
+
+```bash
+cd /Users/yohan/projects/latency-monitor
+python3 -m application.cli --targets 8.8.8.8 1.1.1.1 --interval 1.0 --iterations 5
+```
 
 ## Configuration
 
-The default config is saved to `monitor_config.json`.
+The default settings live in `monitor_config.json` and include:
+
+- monitored targets
+- ping interval
+- latency thresholds
+- packet-loss thresholds
+- dashboard host and port
+- SQLite database path
+
+## Docker
+
+```bash
+docker compose up
+```
 
 ## Notes
 
-This project is intentionally built in stages so it can evolve toward a fuller network monitoring system while staying stable and testable.
+This project is built as a practical monitoring foundation that can continue advancing toward a fuller network operations dashboard, alerting system, and deployment-ready application stack.

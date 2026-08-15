@@ -44,9 +44,15 @@ def create_app(config_path: str | Path = "monitor_config.json") -> Flask:
             if alert is not None:
                 alerts.append(alert)
 
+        incident_rows = []
+        for target in config.targets:
+            incident_rows.extend(history.incidents_for_target(target, limit=10))
+        incident_rows.sort(key=lambda item: item.get("created_at", ""), reverse=True)
+
         return jsonify({
             "targets": snapshot,
             "alerts": alerts,
+            "incidents": incident_rows[:10],
             "config": {
                 "interval": config.interval,
                 "latency_threshold_ms": config.latency_threshold_ms,
